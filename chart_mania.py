@@ -404,9 +404,9 @@ if __name__ == "__main__":
     if opt.offset:
         offset = opt.offset
     elif opt.preset and opt.preset == 'beatoraja':
-        offset = 150
+        offset = 95
     elif opt.preset and opt.preset == 'bemuse':
-        offset = 0
+        offset = 5
 
     """Mania chart processing"""
     # get raw data of beatmap
