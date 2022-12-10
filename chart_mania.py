@@ -207,23 +207,23 @@ def mania_add_offset(obj, offset):
     return obj
 
 
-def _mania_ms_to_pulse(ms, measure_ms, resolution):
-    """Given an osumania hitobj, convert the ms into pulse"""
-    measure_pulse = (ms / measure_ms) * resolution
-    return measure_pulse
-
-
 def extract_osz(filepath):
     with ZipFile(filepath, "r") as osz:
         osz.extractall()
 
 
-def bmson_gen_note(maniaobj, beat_ms):
+def _mania_ms_to_pulse(ms, measure_ms, resolution):
+    """Given an osumania hitobj, convert the ms into pulse (ignoring previous timing points)"""
+    measure_pulse = (ms / measure_ms) * resolution
+    return measure_pulse
+
+
+def bmson_gen_note(maniaobj, beat_ms, time_offset):
     """Generate bmson note from osumania objects and timings"""
     note = {}
     note["x"] = maniaobj["lane"] + 1
 
-    note["y"] = _mania_ms_to_pulse(maniaobj["time"], beat_ms, 240)
+    note["y"] = _mania_ms_to_pulse(maniaobj["time"] - time_offset, beat_ms, 240)
     note["y"] = int(round(note["y"], 1))
 
     if not maniaobj["ln"]:
@@ -239,21 +239,45 @@ def bmson_gen_note(maniaobj, beat_ms):
 def bmson_group_mania_soundchannels(hitobjs, timings):
     """bmson format groups notes with the same hitsounds together"""
 
-    # the current measure object
     timings_i = iter(timings)
-    m_idx = next(timings_i, None)
-    if not m_idx:
+
+    # current timing reference = at x time, y beats per measure
+    c_timing_ref = next(timings_i, None)
+    c_next_ref = next(timings_i, None)
+    if not c_timing_ref:
         LOGGER.error("No timings in list")
         return
 
+    if not c_timing_ref["uninherited"]:
+        LOGGER.error("Expected first timing point to be uninherited")
+        return
+
+    ref_measure_ms = c_timing_ref["beatLength"]
+    measure_ms = ref_measure_ms
+
+    # the total amount of pulses elapsed since beginning of timing point
+    total_pulses = _mania_ms_to_pulse(c_timing_ref["time"], measure_ms, 240)
+
     sound_channels = []
     default_channel = {"notes": []}
+    bpm_events = []
 
     for o in hitobjs:
+        if c_next_ref and c_next_ref["time"] <= o["time"]:
+            time_diff = c_next_ref["time"] - c_timing_ref["time"]
+            total_pulses += _mania_ms_to_pulse(time_diff, measure_ms, 240)
 
-        # timing change
-        if m_idx["time"] <= o["time"]:
-            m_idx = next(timings_i, m_idx)
+            c_timing_ref = c_next_ref
+            c_next_ref = next(timings_i, None)
+
+            if not c_timing_ref["uninherited"]:
+                measure_ms = ref_measure_ms / c_timing_ref["sv_mult"]
+            else:
+                ref_measure_ms = c_timing_ref["beatLength"]
+
+            bpm_event = {"y": total_pulses,
+                         "bpm": _bpm_from_measure_time(measure_ms)}
+            bpm_events.append(bpm_event)
 
         sample = o["sample"]
         if sample != "default":
@@ -266,12 +290,12 @@ def bmson_group_mania_soundchannels(hitobjs, timings):
             channel_obj = {"name": sample, "notes": []}
             sound_channels.append(channel_obj)
 
-        note_obj = bmson_gen_note(o, m_idx["beatLength"])
+        note_obj = bmson_gen_note(o, measure_ms, c_timing_ref["time"])
+        note_obj["y"] += total_pulses
         channel_obj["notes"].append(note_obj)
 
     sound_channels.append(default_channel)
-
-    return sound_channels
+    return sound_channels, bpm_events
 
 
 def bmson_gen_main_audio_info(pulse, audiofile):
@@ -342,13 +366,8 @@ def convert_mania_chart(filepath, dstpath, extra_offset):
         map(lambda x: mania_add_offset(x, offset + extra_offset), chart_timings)
     )
 
-    # split into timings bpm and sv changes
-    chart_bpms = list(filter(lambda x: x["uninherited"], chart_timings))
-    chart_sv = list(filter(lambda x: not x["uninherited"], chart_timings))
 
     for i in chart_hitobjs[0:5]:
-        print(i)
-    for i in chart_bpms:
         print(i)
 
     """BMS Chart processing"""
@@ -364,10 +383,10 @@ def convert_mania_chart(filepath, dstpath, extra_offset):
     print(info)
 
     # make sound channels
-    channels = bmson_group_mania_soundchannels(chart_hitobjs, chart_bpms)
+    channels, bpm_events = bmson_group_mania_soundchannels(chart_hitobjs, chart_timings)
 
     # calc pulse for first audio
-    first_length = chart_bpms[0]["beatLength"]
+    first_length = chart_timings[0]["beatLength"]
     pulse = _mania_ms_to_pulse(offset + chart_data["AudioLeadIn"], first_length, 240)
     pulse = int(pulse)
 
@@ -377,7 +396,7 @@ def convert_mania_chart(filepath, dstpath, extra_offset):
         "version": "1.0.0",
         "info": info,
         "bga": bmson_gen_bga(bg),
-        "bpm_events": None,
+        "bpm_events": bpm_events,
         "lines": None,
         "stop_events": None,
         "sound_channels": channels,
