@@ -274,9 +274,10 @@ def bmson_group_mania_soundchannels(hitobjs, timings):
                 measure_ms = ref_measure_ms / c_timing_ref["sv_mult"]
             else:
                 ref_measure_ms = c_timing_ref["beatLength"]
+                measure_ms = ref_measure_ms
+                LOGGER.warning("Multiple bpm settings may not work")
 
-            bpm_event = {"y": total_pulses,
-                         "bpm": _bpm_from_measure_time(measure_ms)}
+            bpm_event = {"y": total_pulses, "bpm": _bpm_from_measure_time(measure_ms)}
             bpm_events.append(bpm_event)
 
         sample = o["sample"]
@@ -365,7 +366,6 @@ def convert_mania_chart(filepath, dstpath, extra_offset):
     chart_timings = list(
         map(lambda x: mania_add_offset(x, offset + extra_offset), chart_timings)
     )
-
 
     for i in chart_hitobjs[0:5]:
         print(i)
