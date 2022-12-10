@@ -186,7 +186,7 @@ def mania_calc_offset(timings):
     """
 
     first_timing = [x for x in timings if x["uninherited"]][0]
-    initial_bpm = 1 / first_timing["beatLength"] * 1000 * 60
+    initial_bpm = _bpm_from_measure_time(first_timing["beatLength"])
     LOGGER.info(f"Got first timing BPM {initial_bpm}")
 
     offset_ms = (first_timing["time"] / first_timing["beatLength"] % 1) * first_timing[
@@ -249,7 +249,6 @@ def bmson_group_mania_soundchannels(hitobjs, timings):
     sound_channels = []
     default_channel = {"notes": []}
 
-    last_note = 0
     for o in hitobjs:
 
         # timing change
@@ -269,11 +268,10 @@ def bmson_group_mania_soundchannels(hitobjs, timings):
 
         note_obj = bmson_gen_note(o, m_idx["beatLength"])
         channel_obj["notes"].append(note_obj)
-        last_note = max(last_note, note_obj["y"])
 
     sound_channels.append(default_channel)
 
-    return sound_channels, last_note
+    return sound_channels
 
 
 def bmson_gen_main_audio_info(pulse, audiofile):
@@ -299,26 +297,6 @@ def bmson_gen_info(metadata):
     info["resolution"] = 240
 
     return info
-
-
-def bmson_gen_barlines(timings, last, resolution):
-    pulse = 0
-
-    # time signature
-    sig = 4
-
-    bars = []
-    timings_i = iter(timings)
-    m_idx = next(timings_i, None)
-    t_pulse = _mania_ms_to_pulse(m_idx["time"], m_idx["beatLength"], resolution)
-
-    while pulse < last:
-        if t_pulse <= pulse:
-            m_idx = next(timings_i, m_idx)
-            t_pulse = _mania_ms_to_pulse(m_idx["time"], m_idx["beatLength"], resolution)
-        bars.append({"y": pulse})
-        pulse += resolution * 4
-    return bars
 
 
 def bmson_gen_bga(bg):
@@ -386,7 +364,7 @@ def convert_mania_chart(filepath, dstpath, extra_offset):
     print(info)
 
     # make sound channels
-    channels, last = bmson_group_mania_soundchannels(chart_hitobjs, chart_bpms)
+    channels = bmson_group_mania_soundchannels(chart_hitobjs, chart_bpms)
 
     # calc pulse for first audio
     first_length = chart_bpms[0]["beatLength"]
@@ -399,9 +377,9 @@ def convert_mania_chart(filepath, dstpath, extra_offset):
         "version": "1.0.0",
         "info": info,
         "bga": bmson_gen_bga(bg),
-        "bpm_events": [],
-        "lines": bmson_gen_barlines(chart_bpms, last, 240),
-        "stop_events": [],
+        "bpm_events": None,
+        "lines": None,
+        "stop_events": None,
         "sound_channels": channels,
     }
 
