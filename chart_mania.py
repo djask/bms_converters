@@ -271,11 +271,18 @@ def bmson_group_mania_soundchannels(hitobjs, timings):
             c_next_ref = next(timings_i, None)
 
             if not c_timing_ref["uninherited"]:
-                measure_ms = ref_measure_ms / c_timing_ref["sv_mult"]
+                target_ref_ms = ref_measure_ms
+                target_ms = ref_measure_ms / c_timing_ref["sv_mult"]
             else:
-                ref_measure_ms = c_timing_ref["beatLength"]
-                measure_ms = ref_measure_ms
+                target_ref_ms = c_timing_ref["beatLength"]
+                target_ms = target_ref_ms
                 LOGGER.warning("Multiple bpm settings may not work")
+
+            # check if values are sensible
+            if 10 < target_ms < 9999:
+                measure_ms = target_ms
+                ref_measure_ms = target_ref_ms
+
 
             bpm_event = {"y": total_pulses, "bpm": _bpm_from_measure_time(measure_ms)}
             bpm_events.append(bpm_event)
@@ -319,7 +326,7 @@ def bmson_gen_info(metadata):
     info["mode_hint"] = "beat-7k"
     info["level"] = 0
     info["preview_music"] = metadata["AudioFilename"]
-    info["resolution"] = 240
+    info["resolution"] = 240 
 
     return info
 
@@ -432,7 +439,7 @@ if __name__ == "__main__":
     if opt.offset:
         offset = opt.offset
     elif opt.preset and opt.preset == "beatoraja":
-        offset = 95
+        offset = 80
     elif opt.preset and opt.preset == "bemuse":
         offset = 5
 
