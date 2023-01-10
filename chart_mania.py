@@ -102,28 +102,18 @@ def sanitise_event(e):
     if len(e) < 2:
         LOGGER.error(f"Unparseable event {e}")
 
-    if e[0] == "0":
-        ret["eventType"] = "bg"
-    elif e[0] == "Video":
-        ret["eventType"] = "vid"
-    else:
-        ret["eventType"] = "unused"
-
     ret["startTime"] = float(e[1])
 
-    idx = 0
-    if e[0] in ["0", "Video"]:
+    if e[0] == "0":
+        ret["eventType"] = "bg"
         ret["file"] = e[2].strip('"')
         ret["x"] = int(e[3])
         ret["y"] = int(e[4])
     else:
-        idx = 0
-        for p in e[2:]:
-            ret[f"param{idx}"].append(p)
-            idx += 1
+        LOGGER.error(f"Unsupported event {e[0]}")
+        ret["eventType"] = "unsupported"
 
     # not supporting anything else right now
-
     return ret
 
 
@@ -236,7 +226,7 @@ def bmson_gen_note(maniaobj, beat_ms, time_offset):
     return note
 
 
-def bmson_group_mania_soundchannels(hitobjs, timings):
+def bmson_group_mania_soundchannels(hitobjs, timings, hitsounds):
     """bmson format groups notes with the same hitsounds together"""
 
     timings_i = iter(timings)
@@ -259,7 +249,7 @@ def bmson_group_mania_soundchannels(hitobjs, timings):
     total_pulses = _mania_ms_to_pulse(c_timing_ref["time"], measure_ms, 240)
 
     sound_channels = []
-    default_channel = {"notes": []}
+    default_channel = {"name": "0", "notes": []}
     bpm_events = []
 
     for o in hitobjs:
@@ -288,7 +278,7 @@ def bmson_group_mania_soundchannels(hitobjs, timings):
             bpm_events.append(bpm_event)
 
         sample = o["sample"]
-        if sample != "default":
+        if sample != "0" and hitsounds:
             channel_obj = next(
                 filter(lambda x: x["name"] == sample, sound_channels), None
             )
@@ -342,7 +332,7 @@ def bmson_gen_bga(bg):
     return bga
 
 
-def convert_mania_chart(filepath, dstpath, extra_offset):
+def convert_mania_chart(filepath, dstpath, extra_offset, hitsounds):
     LOGGER.info(f"Converting {filepath}")
     chart_data, chart_objs = get_beatmap_data(filepath)
 
@@ -390,7 +380,7 @@ def convert_mania_chart(filepath, dstpath, extra_offset):
     print(info)
 
     # make sound channels
-    channels, bpm_events = bmson_group_mania_soundchannels(chart_hitobjs, chart_timings)
+    channels, bpm_events = bmson_group_mania_soundchannels(chart_hitobjs, chart_timings, hitsounds)
 
     # calc pulse for first audio
     first_length = chart_timings[0]["beatLength"]
@@ -423,6 +413,13 @@ if __name__ == "__main__":
     parser.add_option("-d", "--dst", dest="dst", help="destination bms directory")
     parser.add_option("-o", "--offset", dest="offset", help="offset override")
     parser.add_option(
+        "-s",
+        "--hitsounds",
+        dest="hitsounds",
+        default=False,
+        help="make dedicated hitsound channels, default off",
+    )
+    parser.add_option(
         "-p",
         "--present",
         dest="preset",
@@ -437,9 +434,11 @@ if __name__ == "__main__":
         parser.error("dst not given")
 
     if opt.offset:
-        offset = opt.offset
-    elif opt.preset and opt.preset == "beatoraja":
-        offset = 80
+        try:
+            offset = int(opt.offset)
+        except ValueError:
+            offset = 0
+
     elif opt.preset and opt.preset == "bemuse":
         offset = 5
 
@@ -448,4 +447,4 @@ if __name__ == "__main__":
     dstfolder = unzip_osz(opt.osz, opt.dst)
     LOGGER.info(dstfolder)
     for file in glob.glob(f"{dstfolder}/*.osu"):
-        convert_mania_chart(file, dstfolder, offset)
+        convert_mania_chart(file, dstfolder, offset, opt.hitsounds)

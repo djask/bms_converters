@@ -10,7 +10,10 @@ Supports SV changes and other basic timing points, hitsounds should also work bu
 ## Usage
 `python chart_mania.py -h`
 
+There is also a bash scipt which can be used for watching directories for file conversions
+
+run `./watch_osz.sh -h` for more info
+
 ## TODO
-- Add file watcher to automatically process and delete downloaded beatmaps
 - Fix issues with the offsets
 
